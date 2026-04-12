@@ -21,6 +21,7 @@ from .sqlmap_adapter import SqlmapAdapter
 from .hashcat_adapter import HashcatAdapter
 from .binwalk_adapter import BinwalkAdapter
 from .nmap_adapter import NmapAdapter
+from .john_adapter import JohnAdapter
 
 __all__ = [
     # Base classes
@@ -42,6 +43,7 @@ __all__ = [
     "HashcatAdapter",
     "BinwalkAdapter",
     "NmapAdapter",
+    "JohnAdapter",
 ]
 
 
@@ -54,6 +56,7 @@ def register_all_adapters() -> None:
         HashcatAdapter(),
         BinwalkAdapter(),
         NmapAdapter(),
+        JohnAdapter(),
     ]
     for adapter in adapters:
         register_adapter(adapter)
