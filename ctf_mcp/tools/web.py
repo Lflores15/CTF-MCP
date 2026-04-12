@@ -90,6 +90,9 @@ class WebTools:
             # URL / Encoding
             "url_decode_recursive": "Recursively URL-decode multi-encoded strings",
             "http_header_analyze": "Analyze HTTP headers for security issues",
+            # Database connections
+            "postgres_query": "Connect to a PostgreSQL server and run a query (uses psql CLI or psycopg2)",
+            "mysql_query": "Connect to a MySQL/MariaDB server and run a query (uses mysql CLI or pymysql)",
         }
 
     # === SQL Injection ===
@@ -2921,3 +2924,123 @@ def handleResponse(req, interesting):
                 result.append("  [WARN] Cookie missing SameSite attribute")
 
         return '\n'.join(result)
+
+    # === Database connections ===
+
+    def postgres_query(
+        self,
+        host: str,
+        port: int,
+        user: str,
+        password: str,
+        database: str,
+        query: str = "\dt",
+    ) -> str:
+        """
+        Connect to a PostgreSQL server and execute a query. Tries psycopg2 first,
+        falls back to the psql CLI binary.
+        :param host: PostgreSQL host
+        :param port: PostgreSQL port (default 5432)
+        :param user: Database username
+        :param password: Database password
+        :param database: Database name
+        :param query: SQL query to run (default: \dt to list tables)
+        """
+        import shutil, subprocess, os
+        # --- psycopg2 path ---
+        try:
+            import psycopg2
+            conn = psycopg2.connect(
+                host=host, port=port, user=user, password=password, dbname=database,
+                connect_timeout=10,
+            )
+            cur = conn.cursor()
+            cur.execute(query)
+            try:
+                rows = cur.fetchall()
+                col_names = [desc[0] for desc in cur.description] if cur.description else []
+                lines = ["\t".join(col_names)] if col_names else []
+                lines += ["\t".join(str(c) for c in row) for row in rows]
+                out = "\n".join(lines) if lines else "(no rows)"
+            except Exception:
+                out = f"Query OK. Rows affected: {cur.rowcount}"
+            conn.close()
+            return out
+        except ImportError:
+            pass
+        except Exception as e:
+            return f"psycopg2 error: {e}"
+
+        # --- psql CLI fallback ---
+        if not shutil.which("psql"):
+            return (
+                "Error: neither psycopg2 nor psql is available.\n"
+                "Fix: pip install psycopg2-binary  OR  sudo apt install postgresql-client"
+            )
+        env = {**os.environ, "PGPASSWORD": password}
+        cmd = ["psql", "-h", host, "-p", str(port), "-U", user, database, "-c", query]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=env)
+            return (result.stdout + result.stderr).strip() or "(no output)"
+        except subprocess.TimeoutExpired:
+            return "Error: psql timed out after 15s"
+
+    def mysql_query(
+        self,
+        host: str,
+        port: int,
+        user: str,
+        password: str,
+        database: str,
+        query: str = "SHOW TABLES;",
+    ) -> str:
+        """
+        Connect to a MySQL/MariaDB server and execute a query. Tries pymysql first,
+        falls back to the mysql CLI binary.
+        :param host: MySQL host
+        :param port: MySQL port (default 3306)
+        :param user: Database username
+        :param password: Database password
+        :param database: Database name
+        :param query: SQL query to run (default: SHOW TABLES)
+        """
+        import shutil, subprocess
+        # --- pymysql path ---
+        try:
+            import pymysql
+            conn = pymysql.connect(
+                host=host, port=port, user=user, password=password, database=database,
+                connect_timeout=10, autocommit=True,
+            )
+            cur = conn.cursor()
+            cur.execute(query)
+            try:
+                rows = cur.fetchall()
+                col_names = [desc[0] for desc in cur.description] if cur.description else []
+                lines = ["\t".join(col_names)] if col_names else []
+                lines += ["\t".join(str(c) for c in row) for row in rows]
+                out = "\n".join(lines) if lines else "(no rows)"
+            except Exception:
+                out = f"Query OK. Rows affected: {cur.rowcount}"
+            conn.close()
+            return out
+        except ImportError:
+            pass
+        except Exception as e:
+            return f"pymysql error: {e}"
+
+        # --- mysql CLI fallback ---
+        if not shutil.which("mysql"):
+            return (
+                "Error: neither pymysql nor mysql CLI is available.\n"
+                "Fix: pip install pymysql  OR  sudo apt install mysql-client"
+            )
+        cmd = [
+            "mysql", f"-h{host}", f"-P{port}", f"-u{user}", f"-p{password}",
+            database, "-e", query,
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            return (result.stdout + result.stderr).strip() or "(no output)"
+        except subprocess.TimeoutExpired:
+            return "Error: mysql timed out after 15s"

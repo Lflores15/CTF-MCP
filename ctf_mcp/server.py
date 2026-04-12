@@ -23,6 +23,7 @@ from .tools.pwn import PwnTools
 from .tools.reverse import ReverseTools
 from .tools.forensics import ForensicsTools
 from .tools.misc import MiscTools
+from .tools.hashcat import CrackingTools
 from .core.orchestrator import CTFOrchestrator, Challenge, SolveResult
 
 # Configure logging
@@ -42,6 +43,7 @@ pwn_tools = PwnTools()
 reverse_tools = ReverseTools()
 forensics_tools = ForensicsTools()
 misc_tools = MiscTools()
+cracking_tools = CrackingTools()
 
 # Module registry
 MODULES = [
@@ -51,6 +53,7 @@ MODULES = [
     ("reverse", reverse_tools),
     ("forensics", forensics_tools),
     ("misc", misc_tools),
+    ("cracking", cracking_tools),
 ]
 
 # Tool registry - maps tool names to their handlers
@@ -353,13 +356,17 @@ async def _handle_classify(arguments: dict) -> list[TextContent]:
     output = json.dumps(result.to_dict(), indent=2, ensure_ascii=False)
     return [TextContent(type="text", text=output)]
 
-
 def main():
-    """Main entry point"""
-    logger.info("Starting CTF-MCP Server...")
-    register_tools()
-    asyncio.run(stdio_server(app))
-
+    register_tools()  # ← also make sure this is called!
+    
+    async def _run():
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(
+                read_stream,
+                write_stream,
+                app.create_initialization_options()
+            )
+    asyncio.run(_run())
 
 if __name__ == "__main__":
     main()
